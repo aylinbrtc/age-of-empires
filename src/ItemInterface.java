@@ -1,13 +1,12 @@
 public interface ItemInterface {
 
 
-    int getX();  // x koordinatını yazar
+    int getX();
 
-    int getY();  // y koordinatını yazar
+    int getY();
 
-    int getLifePoints(); // kaç canı kalmışsa onu yazar
-
-    String getSymbol(); // mapinterface'inde belirtilen her tür için olması gereken karakteri döner
+    int getLifePoints();
+    String getSymbol();
 
     default String print_message() {
         return getSymbol() + "\t"  + getX() + "\t" + getY() + "\t" +  getLifePoints();

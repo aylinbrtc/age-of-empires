@@ -9,6 +9,7 @@ public class Map implements MapInterface, Serializable {
     }
 
 
+    //System.out.println()ları temizledim
     @Override
     public String status() {
         String s="";
@@ -18,17 +19,18 @@ public class Map implements MapInterface, Serializable {
                     int more = 0;
                     for (int k = 0; k < map[i][j].size(); k++) {
                         if (map[i][j].get(k) instanceof University || map[i][j].get(k) instanceof Tower || map[i][j].get(k) instanceof MainBuilding) {
-                            System.out.print(map[i][j].get(k).getSymbol());
+                            s +=(map[i][j].get(k).getSymbol());
                             more++;
                         }
                     }
                     if (more==0){
-                        System.out.print(map[i][j].get(0).getSymbol());
+                        s +=(map[i][j].get(0).getSymbol());
                     }
                 }
-                else System.out.print("_");
+                else s +="_";
+
             }
-            System.out.println();
+            s += "\n";
         }
         return s;
     }
@@ -53,7 +55,7 @@ public class Map implements MapInterface, Serializable {
         return row<50 && row>=0 && col >=0 && col <100;
     }
 
-    public Item remove(Item item) {
+    public Item removeInMap(Item item) {
         int row=item.getRow();
         int col=item.getCol();
         map[row][col].remove(item);

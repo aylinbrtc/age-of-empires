@@ -4,6 +4,18 @@ public class Catapult extends Soldier{
 
     private int powerBuild;
 
+    public void determine(Player player){
+        setPlayer(player);
+        if(this.player.getUniversity()!=null) {
+            setLifePoints(10 + (player.getUniversity().getCatapultCounter()));
+            powerBuild = 30 + (player.getUniversity().getCatapultCounter());
+
+        }else{
+            setLifePoints(10);
+            powerBuild = 30;
+        }
+    }
+
 
     public int getPowerBuild() {
         return powerBuild;
@@ -15,11 +27,7 @@ public class Catapult extends Soldier{
 
     public Catapult() {
         }
-    public void determine(Player player) {
-        setPlayer(player);
-        if(this.player.getUniversity()!=null) {
-        setLifePoints(20 + this.player.getUniversity().getCavalryCounter());}
-    }
+
 
 
     @Override
@@ -29,8 +37,8 @@ public class Catapult extends Soldier{
 
     @Override
     public void move(int x, int y) throws AgeOfEmpiresException {
-        if (moveController(1,y,x)) {
-            player.takeMap().remove(this);
+        if (player.takeMap().checkIndex(y-1,x-1) && moveController(1,y-1,x-1)) {
+            player.takeMap().removeInMap(this);
             player.takeMap().add(this,y-1,x-1);
             setRow(y-1);
             setCol(x-1);
@@ -45,10 +53,13 @@ public class Catapult extends Soldier{
     public boolean strikeController(int row, int col) {
         ArrayList<int[]> possibilities = mapDesigner(10,this.getRow(),this.getCol());
         ArrayList<int[]> not = mapDesigner(5,this.getRow(),this.getCol());
+
         for(int i=0; i<possibilities.size(); i++) {
-            if (row == possibilities.get(i)[0] && col == possibilities.get(i)[1] && !(row == not.get(i)[0]) && !(col == not.get(i)[1])) {
-                if (player.takeMap().getMap()[row][col].size() != 0)
-                    return true;
+            for (int j=0; j<not.size();j++) {  // **********************************************************************YOKTU
+                if (row == possibilities.get(i)[0] && col == possibilities.get(i)[1] && !(row == not.get(j)[0]) && !(col == not.get(j)[1])) {
+                    if (player.takeMap().getMap()[row][col].size() != 0)
+                        return true;
+                }
             }
         }
         return  false;
@@ -58,60 +69,60 @@ public class Catapult extends Soldier{
     public void attack(int x, int y) throws AgeOfEmpiresException {
         int row = y - 1;
         int col = x - 1;
-
         if (strikeController(row, col)) {
-            for (Item item : player.takeMap().getMap()[row][col]) {
+            ArrayList<Item> items = new ArrayList<>(player.takeMap().getMap()[row][col]);
+            for (Item item : items) {
                 if (item.player != this.player && player.takeMap().getMap()[row][col].size() == 1) {
                     if (item instanceof University || item instanceof MainBuilding) {
                         item.setLifePoints(item.getLifePoints() - powerBuild);
                     } else {
-                        if (item instanceof Archer && item.strikeController(row, col)) {
-                            ((Archer) item).defense(getRow(), getCol());
-                            ArrayList<Item> empty = null;
-                            player.takeMap().getMap()[getRow()][getCol()] = empty;
-                            isAnyoneDead(item, getRow(), getCol());
-                        } else if (item instanceof Catapult && item.strikeController(row, col)) {
-                            ((Catapult) item).defense(getRow(), getCol());
-                            ArrayList<Item> empty = null;
-                            player.takeMap().getMap()[getRow()][getCol()] = empty;
-                        } else if (item instanceof Cavalry && item.strikeController(row, col)) {
-                            ((Cavalry) item).defense(getRow(), getCol());
-                            ArrayList<Item> empty = null;
-                            player.takeMap().getMap()[getRow()][getCol()] = empty;
-                            isAnyoneDead(item, getRow(), getCol());
-                        } else if (item instanceof Spearman && item.strikeController(row, col)) {
-                            ((Spearman) item).defense(getRow(), getCol());
-                            if (!isAnyoneDead(item, getRow(), getCol())) {
-                                ArrayList<Item> empty = null;
-                                player.takeMap().getMap()[getRow()][getCol()] = empty;
-                            }
-                        } else if (item instanceof Swordman && item.strikeController(row, col)) {
-                            ((Swordman) item).defense(getRow(), getCol());
-                            ArrayList<Item> empty = null;
-                            player.takeMap().getMap()[getRow()][getCol()] = empty;
-                            isAnyoneDead(item, getRow(), getCol());
-                        } else if (item instanceof Tower && item.strikeController(row, col)) {
-                            item.setLifePoints(item.getLifePoints() - powerBuild);
-                            ((Tower) item).defense(getRow(), getCol());
+                        if (item instanceof Archer) {
+                            ((Archer) item).defense(this,getRow(), getCol());
+                            player.takeMap().getMap()[getRow()][getCol()].remove(item);
                             isAnyoneDead(item, row, col);
-                            isAnyoneDead(item, getRow(), getCol());
-                        } else if (item instanceof Worker && item.strikeController(row, col)) {
+                            isAnyoneDead(this, getRow(), getCol());
+                        } else if (item instanceof Catapult ) {
+                            ((Catapult) item).defense(this,getRow(), getCol());
+                            player.takeMap().getMap()[getRow()][getCol()].remove(item);
+                            isAnyoneDead(item, row, col);
+                            isAnyoneDead(this, getRow(), getCol());
+                        } else if (item instanceof Cavalry ) {
+                            ((Cavalry) item).defense(this,getRow(), getCol());
+                            player.takeMap().getMap()[getRow()][getCol()].remove(item);
+                            isAnyoneDead(item, row, col);
+                            isAnyoneDead(this, getRow(), getCol());
+                        } else if (item instanceof Spearman ) {
+                            ((Spearman) item).defense(this,getRow(), getCol());
+                            if (!isAnyoneDead(this, getRow(), getCol())) {
+                                player.takeMap().getMap()[getRow()][getCol()].remove(item);
+                            }
+                        } else if (item instanceof Swordman) {
+                            ((Swordman) item).defense(this,getRow(), getCol());
+                            player.takeMap().getMap()[getRow()][getCol()].remove(item);
+                            isAnyoneDead(item, row, col);
+                            isAnyoneDead(this, getRow(), getCol());
+                        } else if (item instanceof Tower) {
+                            item.setLifePoints(item.getLifePoints() - powerBuild);
+                            ((Tower) item).defense(this,getRow(), getCol());
+                            isAnyoneDead(item, row, col);
+                            isAnyoneDead(this, getRow(), getCol());
+                        } else if (item instanceof Worker) {
                             if (player.takeMap().getMap()[row][col].size() == 1) {
-                                ((Worker) item).defense(getRow(), getCol());
-                                ArrayList<Item> empty = null;
-                                player.takeMap().getMap()[getRow()][getCol()] = empty;
-                                isAnyoneDead(item, getRow(), getCol());
+                                ((Worker) item).defense(this,getRow(), getCol());
+                                player.takeMap().getMap()[getRow()][getCol()].remove(item);
+                                isAnyoneDead(item, row, col);
+                                isAnyoneDead(this, getRow(), getCol());
                             }
                         }
                     }
                 }else if(item.player != this.player) {
                     if (item instanceof University || item instanceof MainBuilding) {
                         item.setLifePoints(item.getLifePoints() - powerBuild);
-                    } else if (item instanceof Tower && item.strikeController(row, col)) {
+                    } else if (item instanceof Tower ) {
                         item.setLifePoints(item.getLifePoints() - powerBuild);
-                        ((Tower) item).defense(getRow(), getCol());
+                        ((Tower) item).defense(this,getRow(), getCol());
                         isAnyoneDead(item, row, col);
-                        isAnyoneDead(item, getRow(), getCol());
+                        isAnyoneDead(this, getRow(), getCol());
                     }
                 }
 
@@ -121,15 +132,12 @@ public class Catapult extends Soldier{
     }
 
     @Override
-    public void defense(int row, int col) {
+    public void defense(Item item,int row, int col) {
         if(strikeController(row,col)) {
-            for (Item item : player.takeMap().getMap()[row][col]) {
-                if (!(item.player == this.player) && item instanceof Human) {
-                    ArrayList<Item> empty =null;
-                    player.takeMap().getMap()[getRow()][getCol()] = empty;
-                }else if (!(item.player == this.player) && item instanceof Building) {
-                    item.setLifePoints(item.getLifePoints() - powerBuild) ;
-                }
+            if (!(item.player == this.player) && item instanceof Human) {
+                player.takeMap().getMap()[getRow()][getCol()].remove(item);
+            }else if (!(item.player == this.player) && item instanceof Building) {
+                item.setLifePoints(item.getLifePoints() - powerBuild) ;
             }
         }
     }

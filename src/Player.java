@@ -62,8 +62,10 @@ public class Player implements PlayerInterface, Serializable {
         this.order = order;
         this.mainBuilding = new MainBuilding();
         mainBuilding.setPlayer(this);
-        this.worker=new Worker();
+        this.worker=new Worker(this);
+        worker.setPlayer(this);
         worker.determine(this);
+        workers.add(worker);
         if(order==0){
             mainBuilding.setRow(0);
             mainBuilding.setCol(0);
@@ -172,7 +174,9 @@ public class Player implements PlayerInterface, Serializable {
                     takeMap().add(worker,worker.getRow(),worker.getCol());
                     changeTurn();
                 }
+                else throw new AgeOfEmpiresException("");
             }
+            else throw new AgeOfEmpiresException("");
         }
         else if (item instanceof Swordman){
             Swordman swordman = (Swordman) item;
@@ -187,7 +191,9 @@ public class Player implements PlayerInterface, Serializable {
                     takeMap().add(swordman,swordman.getRow(),swordman.getCol());
                     changeTurn();
                 }
+                else throw new AgeOfEmpiresException("");
             }
+            else throw new AgeOfEmpiresException("");
         }
         else if (item instanceof Archer){
             Archer archer = (Archer) item;
@@ -202,7 +208,9 @@ public class Player implements PlayerInterface, Serializable {
                     takeMap().add(archer,archer.getRow(),archer.getCol());
                     changeTurn();
                 }
+                else throw new AgeOfEmpiresException("");
             }
+            else throw new AgeOfEmpiresException("");
         }
         else if (item instanceof Spearman){
             Spearman spearman = (Spearman) item;
@@ -217,7 +225,9 @@ public class Player implements PlayerInterface, Serializable {
                     takeMap().add(spearman,spearman.getRow(),spearman.getCol());
                     changeTurn();
                 }
+                else throw new AgeOfEmpiresException("");
             }
+            else throw new AgeOfEmpiresException("");
         }
         else if (item instanceof Cavalry){
             Cavalry cavalry = (Cavalry) item;
@@ -232,7 +242,9 @@ public class Player implements PlayerInterface, Serializable {
                     takeMap().add(cavalry,cavalry.getRow(),cavalry.getCol());
                     changeTurn();
                 }
+                else throw new AgeOfEmpiresException("");
             }
+            else throw new AgeOfEmpiresException("");
         }
         else if (item instanceof Catapult){
             Catapult catapult = (Catapult) item;
@@ -248,7 +260,9 @@ public class Player implements PlayerInterface, Serializable {
                     takeMap().add(catapult,catapult.getRow(),catapult.getCol());
                     changeTurn();
                 }
+                else throw new AgeOfEmpiresException("");
             }
+            else throw new AgeOfEmpiresException("");
         }
         else
             throw new AgeOfEmpiresException("");
@@ -307,8 +321,10 @@ public class Player implements PlayerInterface, Serializable {
 
     public void changeTurn() throws AgeOfEmpiresException {
 
+        for(int i=0; i<g.getPlayers().size(); i++){
+            g.getPlayers().get(i).mainBuilding.isDeadMain();
+        }
 
-        boolean x=mainBuilding.isDeadMain(mainBuilding.getRow(),mainBuilding.getCol());
         if (university!=null)
             university.isUniversityDead(university.getRow(),university.getCol());
         if (g.getPlayers().size()>=2) {
@@ -318,12 +334,13 @@ public class Player implements PlayerInterface, Serializable {
             } else {
                 g.getPlayers().get(i + 1).setTurn(true);
             }
+
             g.getPlayers().get(i).setTurn(false);
             gold = gold + 2;
             wood = wood + 10;
             stone = stone + 5;
         }
-        else
+        else if(g.getPlayers().size()==1)
             System.out.println("Oyun bitti");
     }
 

@@ -73,7 +73,10 @@ public class University extends Building implements UniversityInterface{
 
         }else throw new AgeOfEmpiresException("");
     }
-
+    public void determine(Player player){//***********************************************************
+        setPlayer(player);
+        player.setUniversity(this);
+    }
     @Override
     public void trainCavalry() throws AgeOfEmpiresException {
         if (player.getGold() >= 50) {
@@ -113,7 +116,7 @@ public class University extends Building implements UniversityInterface{
 
     public void isUniversityDead(int row,int col){
         if(getLifePoints()<= 0){
-            player.takeMap().remove(this);
+            player.takeMap().removeInMap(this);
             for(Cavalry cavalry : player.cavalries){
                 cavalry.setLifePoints(cavalry.getLifePoints() -cavalryCounter);
                 cavalry.setPowerCavalry(cavalry.getPowerCavalry() -cavalryCounter);

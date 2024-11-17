@@ -1,35 +1,29 @@
 public interface PlayerInterface {
 
 
-    int getWood(); // kaç odunu olduğunu döner
+    int getWood();
 
-    int getGold(); // kaç altını olduğunu döner
+    int getGold();
 
-    int getStone(); // kaç taşı olduğunu döner
+    int getStone();
+    int getTowerCount();
+    int getWorkerCount();
 
-    int getTowerCount(); // kaç kulesi olduğunu döner
+    int getSoldierCount();
 
-    int getWorkerCount(); // kaç işçisi olduğunu döner
-
-
-    int getSoldierCount(); // kaç askeri olduğunu döner
+    void pass() throws AgeOfEmpiresException;
 
 
-    // bir şey yapmadan pass geçme işlemi
-    void pass();
+    Soldier getSoldier(int index) throws AgeOfEmpiresException;
 
-    //  index'inci askeri döner
-    Soldier getSoldier(int index);
 
-    //  index'inci worker'ı döner
-    Worker getWorker(int index);
+    Worker getWorker(int index) throws AgeOfEmpiresException;
 
-    // belirtilen item'ı almaya çalışır. Alamıyorsa ya da öyle bir item yoksa  AgeofEmpiresException'ı atmalı
-    void purchase(Item item);
+    void purchase(Item item) throws AgeOfEmpiresException;
 
     University getUniversity();
 
-    // index'inci tower'i döner
-    Tower getTower(int index);
+
+    Tower getTower(int index) throws AgeOfEmpiresException;
 
 }

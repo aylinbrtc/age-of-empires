@@ -22,12 +22,13 @@ public class Human extends Item implements HumanInterface{
     }
 
     @Override
-    public void defense(int x, int y) {
+    public void defense(Item item,int x, int y) {
 
     }
 
     public boolean moveController(int n,int row,int col){
         ArrayList<int[]> possibilities = mapDesigner(n,getRow(),getCol());
+
         if(player.takeMap().getMap()[row][col].size() == 0){
             for(int i=0; i<possibilities.size(); i++){
                 if(row == possibilities.get(i)[0] && col == possibilities.get(i)[1] )

@@ -42,8 +42,8 @@ public class Spearman extends Soldier{
 
     @Override
     public void move(int x, int y) throws AgeOfEmpiresException {
-        if (moveController(2,y-1,x-1)) {
-            player.takeMap().remove(this);
+        if (player.takeMap().checkIndex(y-1,x-1) && moveController(2,y-1,x-1)) {
+            player.takeMap().removeInMap(this);
             player.takeMap().add(this,y-1,x-1);
             setRow(y-1);
             setCol(x-1);
@@ -71,56 +71,57 @@ public class Spearman extends Soldier{
         int col=x-1;
 
         if (strikeController(row, col)) {
-            for (Item item : player.takeMap().getMap()[row][col]) {
+            ArrayList<Item> items = new ArrayList<>(player.takeMap().getMap()[row][col]);
+            for (Item item : items) {
                 if (item.player != this.player && player.takeMap().getMap()[row][col].size() == 1){
                     if (item instanceof University || item instanceof MainBuilding)
                         item.setLifePoints(item.getLifePoints() - powerOthers);
                     else {
-                        if (item instanceof Archer && item.strikeController(row, col)) {
+                        if (item instanceof Archer ) {
                             item.setLifePoints(item.getLifePoints() - powerOthers);
                             if(!isAnyoneDead(item,row,col)){
-                             ((Archer) item).defense(getRow(), getCol());
-                             isAnyoneDead(item,getRow(),getCol());}
-                        } else if (item instanceof Catapult && item.strikeController(row, col)) {
+                             ((Archer) item).defense(this,getRow(), getCol());
+                             isAnyoneDead(this, getRow(), getCol());;}
+                        } else if (item instanceof Catapult) {
                             item.setLifePoints(item.getLifePoints() - powerOthers);
                             if(!isAnyoneDead(item,row,col)){
-                                ((Catapult) item).defense(getRow(), getCol());
-                                isAnyoneDead(item,getRow(),getCol());}
-                        }else if (item instanceof Cavalry && item.strikeController(row, col)) {
+                                ((Catapult) item).defense(this,getRow(), getCol());
+                                isAnyoneDead(this, getRow(), getCol());;}
+                        }else if (item instanceof Cavalry ) {
                             item.setLifePoints(item.getLifePoints() - powerCavalry);
                             if(!isAnyoneDead(item,row,col)){
-                                ((Cavalry) item).defense(getRow(), getCol());
-                                isAnyoneDead(item,getRow(),getCol());}
-                        } else if (item instanceof Spearman && item.strikeController(row, col)) {
+                                ((Cavalry) item).defense(this,getRow(), getCol());
+                                isAnyoneDead(this, getRow(), getCol());;}
+                        } else if (item instanceof Spearman ) {
                             item.setLifePoints(item.getLifePoints() - powerOthers);
-                            ((Spearman) item).defense(getRow(), getCol());
+                            ((Spearman) item).defense(this,getRow(), getCol());
                             isAnyoneDead(item,row,col);
-                            isAnyoneDead(item,getRow(),getCol());
-                        } else if (item instanceof Swordman && item.strikeController(row, col)) {
+                            isAnyoneDead(this, getRow(), getCol());
+                        } else if (item instanceof Swordman ) {
                             item.setLifePoints(item.getLifePoints() - powerOthers);
                             if(!isAnyoneDead(item,row,col)){
-                                ((Swordman) item).defense(getRow(), getCol());
-                                isAnyoneDead(item,getRow(),getCol());}
-                        } else if (item instanceof Tower && item.strikeController(row, col)) {
+                                ((Swordman) item).defense(this,getRow(), getCol());
+                                isAnyoneDead(this, getRow(), getCol());;}
+                        } else if (item instanceof Tower ) {
                             item.setLifePoints(item.getLifePoints() - powerOthers);
                             if(!isAnyoneDead(item,row,col)){
-                                ((Tower) item).defense(getRow(), getCol());
-                                isAnyoneDead(item,getRow(),getCol());}
-                        } else if (item instanceof Worker && item.strikeController(row, col)) {
+                                ((Tower) item).defense(this,getRow(), getCol());
+                                isAnyoneDead(this, getRow(), getCol());;}
+                        } else if (item instanceof Worker ) {
                             item.setLifePoints(item.getLifePoints() - powerOthers);
                             if(!isAnyoneDead(item,row,col)){
-                                ((Catapult) item).defense(getRow(), getCol());
-                                isAnyoneDead(item,getRow(),getCol());}
+                                ((Catapult) item).defense(this,getRow(), getCol());
+                                isAnyoneDead(this, getRow(), getCol());;}
                             }
                         }
                     }else if(item.player != this.player){
                     if (item instanceof University || item instanceof MainBuilding)
                         item.setLifePoints(item.getLifePoints() - powerOthers);
-                    else if (item instanceof Tower && item.strikeController(row, col)) {
+                    else if (item instanceof Tower ) {
                         item.setLifePoints(item.getLifePoints() - powerOthers);
                         if(!isAnyoneDead(item,row,col)){
-                            ((Tower) item).defense(getRow(), getCol());
-                            isAnyoneDead(item,getRow(),getCol());}
+                            ((Tower) item).defense(this,getRow(), getCol());
+                            isAnyoneDead(this, getRow(), getCol());;}
                     }
                 }
 
@@ -130,18 +131,13 @@ public class Spearman extends Soldier{
     }
 
     @Override
-    public void defense(int row, int col) {
+    public void defense(Item item,int row, int col) {
         if(strikeController(row,col)) {
-            for (Item item : player.takeMap().getMap()[row][col]) {
                 if (!(item.player == this.player)) {
-                    if (!(item instanceof Catapult)) {
-                        if (item instanceof Cavalry)
-                            item.setLifePoints(item.getLifePoints() - powerCavalry);
-                        else item.setLifePoints(item.getLifePoints() - powerOthers);
-                    }
+                    if (item instanceof Cavalry)
+                        item.setLifePoints(item.getLifePoints() - powerCavalry);
+                    else item.setLifePoints(item.getLifePoints() - powerOthers);
                 }
-            }
         }
-
     }
 }

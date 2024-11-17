@@ -141,7 +141,7 @@ public class Game implements GameInterface,Serializable{
                         player.getSoldiers().add(o);
                     }
                     if (str.equals("W")){
-                        Worker o= new Worker();
+                        Worker o= new Worker(player);
                         o.setRow(s.nextInt());
                         o.setCol(s.nextInt());
                         o.setLifePoints(s.nextInt());
@@ -166,14 +166,10 @@ public class Game implements GameInterface,Serializable{
             if (obj instanceof Map){
                 this.map= (Map) obj;
             }
-            else
-                System.out.println("Mapi binaryide okuyamadı");
             Object obj1=i.readObject();
             if (obj1 instanceof ArrayList && ((ArrayList<?>) obj1).get(0) instanceof Player){
                 players= (ArrayList<Player>) obj1;
             }
-            else
-                System.out.println("players binaryide okuyamadı");
 
             int no=i.readInt();
             numPlayers=no;
@@ -194,7 +190,7 @@ public class Game implements GameInterface,Serializable{
                     return players.get(i);
             }
         }
-        throw new AgeOfEmpiresException("");
+        throw new AgeOfEmpiresException("PLAYER SIRASI DEĞİL");
     }
 
 
