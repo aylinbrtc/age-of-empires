@@ -213,3 +213,829 @@ class AddItemWindow(QDialog):
         self.df.loc[len(self.df)] = new_row
         self.is_successful = True
         self.accept() # Pencereyi kapatır ve result() döner
+
+
+
+
+import pandas as pd
+import json
+from PyQt6.QtCore import QAbstractTableModel, Qt, QVariant, QModelIndex
+
+class DataFrameModel(QAbstractTableModel):
+    def __init__(self, df, parent=None):
+        super().__init__(parent)
+        self.df = df
+        self.json_col_name = "Konnektör Detayları (JSON)"
+        self.special_headers = [] # Özel başlıklar, setdata'da kullanılacak
+        self.json_map = {} # JSON verilerinin haritası
+
+    def rowCount(self, parent=None):
+        return len(self.df)
+
+    def columnCount(self, parent=None):
+        return len(self.df.columns)
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return QVariant()
+            
+        row = index.row()
+        col = index.column()
+        col_name = self.df.columns[col]
+        
+        if role == Qt.ItemDataRole.DisplayRole or role == Qt.ItemDataRole.EditRole:
+            
+            # JSON sütununu özel olarak işle (görüntüleme için)
+            if col_name == self.json_col_name and self.special_headers:
+                json_str = self.df.iloc[row].get(self.json_col_name)
+                if json_str:
+                    try:
+                        # JSON string'i yükle
+                        data = json.loads(json_str)
+                        # Sütun adındaki özel başlığı bul
+                        
+                        # Örneğin, "KONNEKTÖR TİPİ" değerini göstermek istenir
+                        # Bu kısım ekran görüntüsünde tam belli değil, basitçe JSON yüklemesi yapılıyor
+                        
+                        # JSON'dan bir değer çekerek gösterme (Örnek Mantık)
+                        # Eğer data bir sözlük ve 'Konnektör Türü' içeriyorsa:
+                        # return data.get('Konnektör Türü', json_str)
+                        
+                        return json_str # JSON string'ini direkt göster
+                    except json.JSONDecodeError:
+                        pass # JSON hatası olursa orijinal string'i gösterir
+
+            # Normal hücre verisini döndür
+            return QVariant(str(self.df.iloc[row, col]))
+            
+        return QVariant()
+
+    def set_special_headers(self, headers):
+        """
+        Özel başlıkları (örneğin JSON içinde aranacak anahtarları) ayarlar.
+        """
+        self.special_headers = headers
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if role == Qt.ItemDataRole.DisplayRole:
+            if orientation == Qt.Orientation.Horizontal:
+                # Sütun başlıklarını döndür
+                return QVariant(str(self.df.columns[section]))
+            
+        return QVariant()
+
+    def get_df(self):
+        return self.df
+        
+    def update_df(self, new_df):
+        """
+        DataFrame'i günceller ve modelin sıfırlanmasını tetikler.
+        """
+        self.beginResetModel()
+        self.df = new_df
+        self.endResetModel()
+
+    def flags(self, index):
+        if not index.isValid():
+            return Qt.ItemFlag.NoItemFlags
+            
+        flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        # Düzenlenebilir yap
+        col_name = self.df.columns[index.column()]
+        # Sadece belirli sütunların düzenlenebilir olmasını sağlayabilirsiniz. 
+        # Şu anki mantık, setdata varsa düzenlenebilir olmalıdır.
+        flags |= Qt.ItemFlag.ItemIsEditable 
+        
+        return flags
+
+    def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
+        if role == Qt.ItemDataRole.EditRole:
+            row = index.row()
+            col = index.column()
+            
+            try:
+                # Değeri string'e dönüştürerek DataFrame'e yaz
+                col_name = self.df.columns[col]
+                self.df.iloc[row, col] = str(value)
+                
+                self.dataChanged.emit(index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole])
+                return True
+                
+            except Exception as e:
+                print(f"Hata: Veri güncelleme başarısız: {e}")
+                return False
+                
+        return False
+
+
+from PyQt6.QtCore import QSortFilterProxyModel, Qt, QModelIndex
+import json
+class FilterProxyModel(QSortFilterProxyModel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.column_filter_data = None # Gösterilecek sütun başlıklarının listesi
+        self.category_filter = None
+        self.search_query = ""
+        self.status_column_index = -1 # Durum sütununun kaynak modeldeki indeksi
+        self.json_column_name = "Konnektör Detayları (JSON)" # JSON verisinin olduğu kolon adı
+
+    def setColumnFilter(self, column_names):
+        """
+        Görüntülenecek sütun başlıklarını ayarlar.
+        """
+        self.beginResetModel()
+        self.column_filter_data = column_names
+        self.endResetModel()
+
+    def setCategoryFilter(self, category):
+        """
+        Kategoriye göre filtreleme için kuralı ayarlar (Örn: 'Konnektörler').
+        """
+        self.beginResetModel()
+        self.category_filter = category
+        self.invalidateFilter() # Filtrenin yeniden çalışmasını sağla
+        self.endResetModel()
+
+    def setSearchQuery(self, query):
+        """
+        Arama sorgusunu ayarlar.
+        """
+        self.beginResetModel()
+        self.search_query = query
+        self.invalidateFilter() # Filtrenin yeniden çalışmasını sağla
+        self.endResetModel()
+
+    def setSourceModel(self, sourceModel):
+        """
+        Kaynak modeli ayarlar ve Durum sütununun indeksini bulur.
+        """
+        super().setSourceModel(sourceModel)
+        if sourceModel is not None:
+            for i in range(sourceModel.columnCount()):
+                header_data = sourceModel.headerData(i, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
+                if header_data == "Durum":
+                    self.status_column_index = i
+                    break
+        self.invalidateFilter() # Yeni model ayarlandığında filtreyi yenile
+
+    def columnCount(self, parent=QModelIndex()):
+        """
+        Görüntülenecek sütun sayısını, filtre verilerine göre döndürür.
+        """
+        if self.column_filter_data is None:
+            return super().columnCount(parent)
+        return len(self.column_filter_data)
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        """
+        Sütun başlıklarını, filtre verilerine göre döndürür.
+        """
+        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
+            if self.column_filter_data and section < len(self.column_filter_data):
+                return self.column_filter_data[section]
+        return super().headerData(section, orientation, role)
+    
+    def normalize_for_search(self, text):
+        """
+        Arama için metni normalleştiren yardımcı fonksiyon (Küçük harfe çevirme, Türkçe karakterleri çevirme).
+        """
+        if not isinstance(text, str):
+            text = str(text)
+
+        text = text.replace('ç', 'c')
+        text = text.replace('Ç', 'C')
+        text = text.replace('ğ', 'g')
+        text = text.replace('Ğ', 'G')
+        text = text.replace('ı', 'i')
+        text = text.replace('İ', 'I')
+        text = text.replace('ö', 'o')
+        text = text.replace('Ö', 'O')
+        text = text.replace('ş', 's')
+        text = text.replace('Ş', 'S')
+        text = text.replace('ü', 'u')
+        text = text.replace('Ü', 'U')
+        text = text.lower()
+        return text
+
+
+    # --- Mapping Metotları (Özel Sütun Filtrelemeyi Desteklemek İçin) ---
+    
+    def mapFromSource(self, sourceIndex):
+        """
+        Kaynak modeldeki indeksi, proxy modeldeki indekse dönüştürür.
+        """
+        if not sourceIndex.isValid() or self.column_filter_data is None:
+            return super().mapFromSource(sourceIndex)
+
+        source_model = self.sourceModel()
+        source_column_name = source_model.headerData(sourceIndex.column(), Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
+        
+        try:
+            proxy_column = self.column_filter_data.index(source_column_name)
+            return self.createIndex(sourceIndex.row(), proxy_column)
+        except ValueError:
+            # Sütun, filtre listesinde yoksa geçersiz indeks döndür
+            return QModelIndex()
+
+    # --- KRİTİK DÜZELTME: MAPTOSOURCE ---
+    def mapToSource(self, proxyIndex):
+        """
+        Sanal sütunlar için mapToSource geçersiz (QModelIndex()) dönmeli,
+        gerçek sütunlar için doğru adresi dönmeli.
+        """
+        if not proxyIndex.isValid() or self.column_filter_data is None:
+            return super().mapToSource(proxyIndex)
+        
+        col_name = self.column_filter_data[proxyIndex.column()]
+        sourceModel = self.sourceModel()
+        
+        if col_name in sourceModel.df.columns:
+            # Gerçek sütun
+            source_col = sourceModel.df.columns.get_loc(col_name)
+            # Satırı bulmak için 0. sütunu referans al
+            proxy_row_ref = self.index(proxyIndex.row(), 0)
+            source_row_index = super().mapToSource(proxy_row_ref)
+            
+            if source_row_index.isValid():
+                return sourceModel.index(source_row_index.row(), source_col)
+        
+        # Sanal sütun (JSON) -> Source'da yeri yok
+        return QModelIndex()
+    
+    def getOriginalRow(self, proxyRow):
+        try:
+            sourceIndex = self.mapToSource(self.index(proxyRow, 0))
+            return sourceIndex.row() if sourceIndex.isValid() else -1
+        except Exception as e:
+            return -1
+
+    def filterAcceptsRow(self, source_row, source_parent):
+        sourceModel = self.sourceModel()
+        if sourceModel is None: return True
+        
+        # DataFrame'e direkt erişim (En hızlı ve güvenli yol)
+        df = sourceModel.df 
+
+        # 1. Konnektör Filtresi
+        if self.category_filter == "Konnektörler":
+            if self.json_column_name in df.columns:
+                raw_val = df.iloc[source_row][self.json_column_name]
+                val_str = str(raw_val).strip().lower()
+                
+                # Dolu mu kontrolü: Boş değil, 'nan' değil, '{}' değil
+                if val_str and val_str != 'nan' and val_str != '{}':
+                    pass # JSON dolu, şimdi aramaya geçebilir
+                else:
+                    return False # JSON boş, bu satırı gizle
+            else:
+                return False
+
+        # 2. Diğer Kategoriler
+        elif self.status_column_index != -1 and self.category_filter:
+            # Durum sütununa bak
+            status_val = df.iloc[source_row, self.status_column_index]
+            
+            if self.category_filter == "Demirbaş Listesi" and status_val != "Kullanımda":
+                return False
+            elif (self.category_filter == "Depo" or self.category_filter == "Backshelller") and status_val != "Depoda":
+                return False
+
+        # 3. Arama (Search Bar)
+        if not self.search_query:
+            return True
+
+        normalized_query = self.normalize_for_search(self.search_query)
+        
+        # Satırdaki tüm hücrelerde ara
+        row_data = df.iloc[source_row].astype(str).values
+        for cell_value in row_data:
+            if normalized_query in self.normalize_for_search(cell_value):
+                return True
+                
+        return False
+
+    # --- SORUN 2 ÇÖZÜMÜ: VERİ OKUMA ---
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return None
+
+        # Sadece Görüntüleme (Display) rolü için işlem yapıyoruz
+        if role == Qt.ItemDataRole.DisplayRole:
+            col_name = self.column_filter_data[index.column()]
+
+            # ---------------------------------------------------------
+            # KRİTİK DÜZELTME: İşlemler Sütunu Kontrolü
+            # ---------------------------------------------------------
+            # Eğer sütun "İşlemler" ise, pahalı işlemlere (JSON parse, row mapping)
+            # girmeden direkt boş string dön. Bu sayede Delegate çizim yapabilir.
+            if col_name == "İşlemler":
+                print(f"DEBUG: Data istendi - İşlemler - Satır: {index.row()}") 
+                return ""
+            # ---------------------------------------------------------
+
+            sourceModel = self.sourceModel()
+            if not sourceModel:
+                return None
+                
+            df = sourceModel.df
+
+            # Önce SATIR numarasını bulmalıyız. 
+            # Sütunlar farklı olduğu için standart mapToSource hata verir.
+            # Hile: Proxy'deki satırın 0. sütununu Source'a map ediyoruz.
+            proxy_row_index = self.index(index.row(), 0)
+            source_index = super().mapToSource(proxy_row_index)
+            
+            if not source_index.isValid():
+                return None
+            
+            row_idx = source_index.row()
+
+            # SENARYO 1: Bu sütun Excel'de gerçekten var mı?
+            if col_name in df.columns:
+                real_col_idx = df.columns.get_loc(col_name)
+                # DataFrame'den direkt okuyoruz (Daha güvenli ve hızlı)
+                val = df.iloc[row_idx, real_col_idx]
+                return str(val) if val is not None else ""
+
+            # SENARYO 2: Bu sütun Excel'de YOK (Demek ki JSON içinden okunacak)
+            else:
+                # JSON sütunu var mı kontrol et
+                if self.json_column_name in df.columns:
+                    json_raw = df.iloc[row_idx][self.json_column_name]
+                    
+                    # JSON verisi boş mu kontrol et
+                    json_str = str(json_raw).strip()
+                    if not json_str or json_str.lower() == 'nan':
+                        return ""
+
+                    try:
+                        # Pandas bazen float 'nan' döndürebilir, onu temizle
+                        if json_str == 'nan': return ""
+                        
+                        data_dict = json.loads(json_str)
+                        
+                        # Dict ise ve aradığımız başlık (col_name) içindeyse değerini döndür
+                        if isinstance(data_dict, dict):
+                            # None dönerse "" yap, sayı dönerse string yap
+                            val = data_dict.get(col_name, "")
+                            return str(val) if val is not None else ""
+                            
+                    except json.JSONDecodeError:
+                        return "" # JSON hatası varsa sessizce boş dön
+                    except Exception as e:
+                        return ""
+                
+                return "" # JSON sütunu yoksa veya veri yoksa boş
+
+        return super().data(index, role)
+
+
+
+import pandas as pd
+
+import pandas as pd
+
+def find_extra_row_value(old_df, new_df):
+    """
+    Yeni eklenen satırdaki 'Malzeme Katalog Tanımı (TR)' değerini bulur.
+    """
+    try:
+        # Sütun adını değişkene atayalım (Yazım hatasını önlemek için)
+        target_col = "Malzeme Katalog Tanımı (TR)"
+        
+        # Eğer bu sütun DataFrame'de yoksa boş dön
+        if target_col not in new_df.columns:
+            return ""
+
+        # Yeni DataFrame daha uzunsa, son eklenen satıra bakalım
+        if len(new_df) > len(old_df):
+            # Son satırı al (Series olarak döner)
+            last_row = new_df.iloc[-1]
+            
+            # Series üzerinden sütun adına direkt erişilir (.iloc kullanmadan)
+            return str(last_row[target_col])
+            
+        return ""
+    except Exception as e:
+        print(f"Hata (find_extra_row_value): {e}")
+        return ""
+
+def get_definition_and_changes(old_df, new_df):
+    """
+    İki DataFrame arasındaki farkı bulur (Değişiklik logları için).
+    """
+    definition = ""
+    before = {}
+    after = {}
+    
+    target_col = "Malzeme Katalog Tanımı (TR)"
+
+    try:
+        # Sütun ve satır sayıları eşitse değişim olmuştur (Satır içi düzenleme)
+        if len(old_df) == len(new_df) and not old_df.equals(new_df):
+            # Farklı olan satırları bul
+            # (Basitçe tüm satırları gezip ilk farkı buluyoruz)
+            diff_indices = []
+            for i in range(len(old_df)):
+                if not old_df.iloc[i].equals(new_df.iloc[i]):
+                    diff_indices.append(i)
+            
+            if diff_indices:
+                row_idx = diff_indices[0] # İlk değişen satırı al
+                
+                # Tanımı al
+                if target_col in new_df.columns:
+                    definition = str(new_df.iloc[row_idx][target_col])
+                
+                # Değişen sütunları bul
+                old_row = old_df.iloc[row_idx]
+                new_row = new_df.iloc[row_idx]
+                
+                for col in old_df.columns:
+                    val_old = str(old_row[col])
+                    val_new = str(new_row[col])
+                    
+                    if val_old != val_new:
+                        before[col] = val_old
+                        after[col] = val_new
+
+        # Depoya ekleme senaryosu gibi satır sayısı değiştiyse ama silme değilse
+        elif len(new_df) > len(old_df):
+             last_row = new_df.iloc[-1]
+             if target_col in new_df.columns:
+                 definition = str(last_row[target_col])
+             # Eklenen değerleri after'a at
+             for col in new_df.columns:
+                 after[col] = str(last_row[col])
+
+    except Exception as e:
+        print(f"Hata (get_definition_and_changes): {e}")
+
+    return definition, before, after
+
+def open_add_item_window(self, df, mode="element"):
+        """
+        Yeni malzeme veya tedarik ekleme penceresini açar.
+        mode: "element" (Tedarik) veya "material" (Malzeme)
+        """
+        # Kullanıcıdan tip seçmesini iste
+        items = ['Konnektör', 'Backshell', 'Diğer Malzemeler']
+        title = "Tedarik Ekleme" if mode == "element" else "Malzeme Ekleme"
+        item_type, ok = QInputDialog.getItem(self, "Malzeme Tipi Seç", 
+                                            "Lütfen girilecek malzemenin tipini seçiniz.", 
+                                            items, 0, False)
+
+        if not (ok and item_type):
+            return
+
+        # Gerekli hazırlıklar
+        temp_df = df.copy()
+        material_options = {}
+        if self.json_data:
+            options_filepath = self.get_file_path("options_config_filepath")
+            material_options = self.load_json_data(options_filepath)
+
+        # Değişkenleri hazırla (default None)
+        material_definition = None
+        part_number = None
+        connector_details = None
+        
+        # Seçime göre ön pencereleri aç (Connector/Backshell tanımlama)
+        if item_type == "Konnektör":
+            conn_win = ConnectorDefinitionWindow(self)
+            conn_win.exec()
+            if not conn_win.is_successful: return
+            
+            material_definition = conn_win.get_created_definition()
+            part_number = conn_win.get_part_number()
+            connector_details = conn_win.get_connector_details()
+
+        elif item_type == "Backshell":
+            back_win = BackshellDefinitionWindow(self)
+            back_win.exec()
+            if not back_win.is_successful: return
+
+            material_definition = back_win.get_created_definition()
+            part_number = back_win.get_part_number()
+            # backshell_details varsa buraya eklenebilir
+
+        # Ortak Pencereyi Aç (AddItemWindow)
+        # mode parametresini buraya gönderiyoruz ("element" veya "material")
+        add_window = AddItemWindow(
+            df=df, 
+            table=self.table_view, # Eğer table_view o anki contexte göre dinamik değilse self.current_context.table_view kullanın
+            parent=self, 
+            material_options=material_options, 
+            material_definition=material_definition, 
+            part_number=part_number, 
+            connector_details=connector_details,
+            mode=mode 
+        )
+        
+        add_window.exec()
+
+        if add_window.is_successful:
+             self.apply_changes(temp_df, change_type="Ekle")
+
+
+
+
+
+
+
+self.last_change_id = 0
+
+        self.action_delegate = ActionButtonsDelegate(self.table_view)
+        self.action_delegate.buttonClicked.connect(self.handle_action_click)
+
+        self.initial_filepath_config = os.path.abspath(f"./data/filepath_config.json")
+
+
+
+
+
+def update_row_filters(self):
+        current_tab= self.tab_widget.tabText(self.tab_widget.currentIndex())
+        context = self.tab_contexts.get(current_tab)
+
+        if not context:
+            return
+        proxy_model = context['proxy_model']
+        search_bar = context['search']
+
+        proxy_model.setSearchQuery(search_bar.text())
+
+
+    def handle_action_click(self, proxy_index, action_name):
+        """Delegate'ten gelen tıklama sinyalini işler."""
+        
+        # 1. Proxy Index'i Gerçek Veri İndeksine (Source Index) çevir
+        current_tab_name = self.tab_widget.tabText(self.tab_widget.currentIndex())
+        context = self.tab_contexts.get(current_tab_name)
+        if not context: return
+        
+        proxy_model = context['proxy_model']
+        
+        # 0. sütun üzerinden mapToSource yaparak satırı buluyoruz (En güvenli yol)
+        proxy_row_ref = proxy_model.index(proxy_index.row(), 0)
+        source_index = proxy_model.mapToSource(proxy_row_ref)
+        
+        if not source_index.isValid():
+            return
+            
+        real_row_index = source_index.row()
+        df = context['df']
+
+        # 2. Hangi butona tıklandıysa o işlemi yap
+        if action_name == "details":
+            self.open_details_window(real_row_index)
+            
+        elif action_name == "procedures":
+            self.handle_procedures(df, real_row_index)
+            
+        elif action_name == "edit_storage":
+            # Eski kodunuzdaki enable/disable kontrolü buraya taşınabilir
+            depo_miktar = str(df.iloc[real_row_index].get("Depo Miktarı", ""))
+            depo_konumu = str(df.iloc[real_row_index].get("Depo Konumu", ""))
+            
+            if depo_miktar or depo_konumu:
+                self.open_edit_storage_amount_window(df, real_row_index)
+            else:
+                QMessageBox.warning(self, "Uyarı", "Depo bilgisi olmayan malzeme düzenlenemez.")
+                
+        elif action_name == "log":
+            self.open_material_log_window(df, real_row_index)
+            
+        elif action_name == "assign":
+            self.open_asset_assignment_window(real_row_index)
+            
+        elif action_name == "delete":
+            self.delete_row(real_row_index)
+
+    def refresh_action_delegate(self):
+        """
+        Geçerli sekmedeki 'İşlemler' sütununu bulur ve ActionButtonsDelegate'i atar.
+        Önceki delegate atamalarını temizler.
+        """
+        current_tab_name = self.tab_widget.tabText(self.tab_widget.currentIndex())
+        tab_context = self.tab_contexts.get(current_tab_name)
+        
+        if not tab_context:
+            return
+
+        table_view = tab_context.get('table_view')
+        proxy_model = tab_context.get('proxy_model')
+
+        # --- KRİTİK ADIM: Önceki tüm sütunlardaki Delegate'leri temizle ---
+        # Bunu yapmazsak, sütunların yeri değiştiğinde eski sütunda butonlar kalır.
+        for col in range(proxy_model.columnCount()):
+            table_view.setItemDelegateForColumn(col, None)
+        # ------------------------------------------------------------------
+
+        # 1. 'İşlemler' sütununun indeksini bul
+        action_col_index = -1
+        for col in range(proxy_model.columnCount()):
+            header_text = proxy_model.headerData(col, Qt.Orientation.Horizontal)
+            if header_text == "İşlemler":
+                action_col_index = col
+                break
+        
+        # 2. Delegate'i ata
+        if action_col_index != -1:
+            new_delegate = ActionButtonsDelegate(table_view)
+            new_delegate.buttonClicked.connect(self.handle_action_click)
+            
+            # Garbage collection'ı önlemek için context içinde sakla
+            tab_context['active_delegate'] = new_delegate
+            
+            # Tabloya ata
+            table_view.setItemDelegateForColumn(action_col_index, new_delegate)
+            
+            # Sütun genişliğini delegate'in sizeHint'ine göre ayarla
+            hint_size = new_delegate.sizeHint(None, None)
+            table_view.setColumnWidth(action_col_index, hint_size.width())
+            
+            # Mouse takibini aç
+            table_view.setMouseTracking(True)
+            table_view.viewport().update()
+
+
+
+
+
+ def on_category_changed(self, selected_category, do_not_update=False):
+        current_tab_index = self.tab_widget.currentIndex()
+        current_file_name = self.tab_widget.tabText(current_tab_index)
+        tab_context = self.tab_contexts.get(current_file_name)
+
+        if not tab_context:
+            return
+
+        proxy_model = tab_context['proxy_model']
+        df = tab_context['df']
+        
+        # Varsayılan başlıkları JSON config'den al
+        if self.json_data and selected_category in self.json_data:
+            base_headers = list(self.json_data[selected_category])
+        else:
+            base_headers = df.columns.tolist()
+
+        final_headers = []
+
+        if selected_category == "Konnektörler":
+            json_col_name = "Konnektör Detayları (JSON)"
+            
+            # Tüm satırlardaki JSON verilerini tarayıp benzersiz anahtarları bul
+            all_json_keys = set()
+            if json_col_name in df.columns:
+                for json_string in df[json_col_name].dropna():
+                    if json_string and str(json_string).lower() != 'nan':
+                        try:
+                            json_data = json.loads(str(json_string))
+                            all_json_keys.update(json_data.keys())
+                        except json.JSONDecodeError:
+                            pass
+            
+            sorted_json_keys = sorted(list(all_json_keys))
+            
+            # Başlık sırasını belirle: [Sabit Başlıklar] + [JSON Keyleri] + [Diğerleri...]
+            # Örneğin "Malzeme Katalog Tanımı (TR)" en başa, sonra JSON verileri gelsin.
+            
+            priority_headers = ["Malzeme Katalog Tanımı (TR)"]
+            end_headers = ["Parça No", "Depo Miktarı", "Depo Konumu", "Durum", "İşlemler"]
+            
+            # Priority headers listeye ekle
+            for h in priority_headers:
+                if h in df.columns or h in base_headers:
+                    final_headers.append(h)
+            
+            # JSON keylerini ekle (Sanal Sütunlar)
+            final_headers.extend(sorted_json_keys)
+            
+            # Sonda görünmesini istediklerini ekle (eğer base_headers içindeyse)
+            for h in base_headers:
+                if h not in final_headers and h not in end_headers:
+                     # config dosyasında tanımlı ama priority veya json değilse ekle
+                    final_headers.append(h)
+
+            for h in end_headers:
+                 # Config dosyasında varsa ve henüz eklenmediyse ekle
+                 if h in base_headers and h not in final_headers:
+                     final_headers.append(h)
+                     
+            if "İşlemler" not in final_headers:
+                final_headers.append("İşlemler")
+
+        else:
+            # Diğer kategoriler için standart davranış
+            final_headers = base_headers + ["İşlemler"]
+
+        # Proxy model'e yeni sütun listesini ve kategoriyi bildir
+        tab_context["headers"] = final_headers.copy()
+        proxy_model.setColumnFilter(final_headers)
+        proxy_model.setCategoryFilter(selected_category)
+
+        if not do_not_update:
+            self.update_row_filters()
+        self.refresh_action_delegate()
+
+
+
+def update_table_from_df(self, df=None, change_type=None):
+        """
+        DataFrame'den tabloyu güncelleyen fonksiyon.
+        """
+        current_file_name = self.tab_widget.tabText(self.tab_widget.currentIndex())
+        tab_context = self.tab_contexts.get(current_file_name)
+        
+        if not tab_context:
+            return
+        
+        table_view = tab_context.get('table_view')
+        proxy_model = tab_context.get('proxy_model')
+        data_model = tab_context.get('data_model')
+        
+        # Scroll pozisyonunu kaydet
+        saved_scroll_position = table_view.verticalScrollBar().value()
+        saved_current_row = table_view.currentIndex().row()
+        
+        if df is not None:
+            tab_context['df'] = df
+        else:
+            df = tab_context['df']
+
+        # Modeli güncelle
+        data_model.update_df(df)
+        
+        if df.empty:
+            return
+        
+        # Başlıkları Belirle
+        selected_category = tab_context['category'].currentText()
+        if self.json_data and selected_category in self.json_data:
+            json_headers = list(self.json_data[selected_category]) 
+        else:
+            json_headers = df.columns.tolist()
+            
+        final_headers = json_headers.copy()
+
+        # "İşlemler" sütunu yoksa ekle
+        if "İşlemler" not in final_headers:
+            final_headers.append("İşlemler")
+
+        # Proxy modele sütunları bildir (Tablo resetlenir)
+        proxy_model.setColumnFilter(final_headers)
+        proxy_model.setCategoryFilter(selected_category)
+        
+        # --- DELEGATE ATAMA KISMI ---
+        self.refresh_action_delegate()
+        # ---------------------------------------------------
+
+        # --- SEÇİMİ GERİ YÜKLE ---
+        current_visible_row_count = proxy_model.rowCount()
+        if change_type == "Sil" and saved_current_row != -1:
+            saved_current_row = min(saved_current_row, current_visible_row_count - 1)
+        elif change_type == "Ekle":
+            saved_current_row = current_visible_row_count - 1
+            
+        if current_visible_row_count > 0 and saved_current_row >= 0:
+            table_view.verticalScrollBar().setValue(saved_scroll_position)
+            table_view.selectRow(saved_current_row)
+
+
+    def handle_cell_clicked(self, row, column, info_label, info_frame):
+        """
+        Kullanıcının tablo hücresine tıkladığında gerçekleşen işlemleri yönetir.
+        Eğer tıklanan hücre 'İşlemler' sütunundaysa, hiçbir işlem yapmaz.
+        Aksi takdirde, hücre içeriğini düzenleme alanına yükler ve ilgili bilgileri gösterir.
+
+        Args:
+            row (int): Tıklanan hücrenin satır numarası.
+            column (int): Tıklanan hücrenin sütun numarası.
+            info_label (QLabel): Bilgi etiketini güncellemek için kullanılan QLabel.
+            info_frame (QFrame): Bilgi çerçevesini göstermek için kullanılan QFrame.
+        """
+        current_tab = self.tab_widget.tabText(self.tab_widget.currentIndex())
+        proxy_model = self.tab_contexts[current_tab]['proxy_model']
+        cell_edit_input = self.tab_contexts[current_tab]['cell_edit_input']
+
+        original_df_index = proxy_model.getOriginalRow(row)
+        model_index = proxy_model.index(row, column)
+        source_index = proxy_model.mapToSource(model_index)
+        original_column_index = source_index.column() if source_index.isValid() else -1
+        if original_column_index == -1:
+            return
+
+        value = proxy_model.data(model_index, Qt.ItemDataRole.DisplayRole)
+
+        if model_index.isValid():
+            self.selected_row = original_df_index
+            self.selected_column = original_column_index
+            str_value = str(value) if value is not None else ""
+            cell_edit_input.setText(str_value)
+            cell_edit_input.setEnabled(True)
+            self.display_row_info(original_df_index, info_label, info_frame)
+        else:
+            self.cell_edit_input.clear()
+            self.cell_edit_input.setEnabled(False)
+            self.close_info()
