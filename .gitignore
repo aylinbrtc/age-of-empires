@@ -27,3 +27,189 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+
+
+
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QScrollArea, QWidget, 
+                             QLabel, QComboBox, QLineEdit, QHBoxLayout, 
+                             QPushButton, QMessageBox)
+from PyQt6.QtCore import Qt
+from datetime import datetime
+import json
+
+class AddItemWindow(QDialog):
+    """
+    Yeni malzeme veya tedarik eklemek için birleşik kullanıcı arayüzü.
+    mode: "element" (Tedarik) veya "material" (Malzeme) olarak belirtilir.
+    """
+
+    def __init__(self, df, table, parent=None, material_options=None, 
+                 material_definition=None, part_number=None, 
+                 connector_details=None, mode="element"):
+        super().__init__(parent)
+        
+        # Moduna göre başlık ve pencere ayarı
+        self.mode = mode
+        title_text = "Malzeme Ekle" if mode == "material" else "Tedarik Ekle"
+        self.setWindowTitle(title_text)
+        
+        self.df = df
+        self.table = table
+        self.fields = {}
+        self.material_definition = material_definition
+        self.part_number = part_number
+        self.connector_details = connector_details
+        self.material_options = material_options or {} # None gelirse boş sözlük olsun
+        self.is_successful = False # Yazım hatası düzeltildi (succesful -> successful)
+
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        scroll = QScrollArea()
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+
+        # Başlıkları tanımla
+        self.header_titles = [
+            "Malzeme Tipi",
+            "Malzeme Katalog Tanımı (TR)",
+            "Tedarik Talep No", 
+            "Tedarik Talep Tarihi", 
+            "Tedarik Talebi",
+            "Sipariş Miktarı", 
+            "Ölçü Birimi",
+            "Yerleşke",
+            "Parça No",
+            "Fiyat",
+            "Para Birimi", 
+            "Toplam Fiyat",
+            "Teslim Alma Tarihi",
+            "Teslim Alınan Miktar",
+            "Depo Miktarı",
+            "Depo Konumu"
+        ]
+
+        # Zorunlu alanları moda göre belirle
+        if self.mode == "material":
+            self.required_fields = [
+                "Malzeme Tipi",
+                "Malzeme Katalog Tanımı (TR)",
+                "Ölçü Birimi",
+                "Yerleşke",
+                "Parça No",
+                "Fiyat",
+                "Teslim Alma Tarihi",
+                "Teslim Alınan Miktar"
+            ]
+        else: # "element" modu (Eski AddElementWindow)
+            self.required_fields = [
+                "Malzeme Katalog Tanımı (TR)"
+            ]
+
+        combobox_fields = ["Malzeme Tipi", "Ölçü Birimi", "Yerleşke", "Para Birimi"]
+
+        for title in self.header_titles:
+            # Widget oluşturma
+            if title in combobox_fields:
+                field = QComboBox()
+                field.addItem("Seçiniz...")
+                if title in self.material_options:
+                    field.addItems(self.material_options.get(title, []))
+                # Boşsa boş string ekle (eski kod uyumu)
+                if field.count() == 1: 
+                    field.addItem("")
+            else:
+                field = QLineEdit()
+                field.setPlaceholderText(title)
+                
+                # Varsayılan değerleri atama
+                if title == "Malzeme Katalog Tanımı (TR)" and self.material_definition:
+                    field.setText(self.material_definition)
+                elif title == "Parça No" and self.part_number:
+                    field.setText(self.part_number)
+                elif title == "Teslim Alma Tarihi":
+                    current_date = datetime.now().strftime("%d.%m.%Y")
+                    field.setText(current_date)
+
+            self.fields[title] = field
+
+            # Etiket oluşturma (Zorunlu alanlar için *)
+            label_text = title
+            if title in self.required_fields:
+                label_text += " *"
+            
+            scroll_layout.addWidget(QLabel(label_text + ":"))
+            scroll_layout.addWidget(field)
+
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(scroll_widget)
+        layout.addWidget(scroll)
+
+        # Butonlar
+        button_layout = QHBoxLayout()
+        cancel_btn = QPushButton("İptal")
+        save_btn = QPushButton("Kaydet")
+        
+        cancel_btn.clicked.connect(self.reject)
+        save_btn.clicked.connect(self.save_data)
+
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(save_btn)
+        layout.addLayout(button_layout)
+
+        self.resize(400, 600)
+
+    def save_data(self):
+        """
+        Verileri kaydeder ve doğrular.
+        """
+        all_columns = list(self.df.columns)
+        new_row = [""] * len(all_columns)
+
+        # 1. Alan Doğrulama ve Veri Toplama
+        for title in self.header_titles:
+            widget = self.fields[title]
+            
+            if isinstance(widget, QComboBox):
+                value = widget.currentText()
+                if value == "Seçiniz...": value = ""
+            else:
+                value = widget.text().strip()
+
+            # Teslim alma tarihi boşsa bugünü ata (Eski kod mantığı)
+            if title == "Teslim Alma Tarihi" and not value:
+                 value = datetime.now().strftime("%d.%m.%Y")
+
+            # Zorunlu alan kontrolü
+            if title in self.required_fields and not value:
+                QMessageBox.warning(self, "Uyarı", f"{title} alanı zorunludur.")
+                return
+
+            # DataFrame sırasına göre veriyi yerleştir
+            if title in all_columns:
+                index = all_columns.index(title)
+                new_row[index] = value
+
+        # 2. Özel Durumlar (Otomatik Doldurma)
+        if "Durum" in all_columns:
+            new_row[all_columns.index("Durum")] = "Depoda"
+            
+        if "Konnektör Detayları (JSON)" in all_columns and self.connector_details:
+            new_row[all_columns.index("Konnektör Detayları (JSON)")] = json.dumps(self.connector_details)
+
+        # 3. Duplicate (Tekrar) Kontrolü
+        col_name = "Malzeme Katalog Tanımı (TR)"
+        if col_name in all_columns:
+            malzeme_tanimi = new_row[all_columns.index(col_name)]
+            if self.df[col_name].astype(str).eq(malzeme_tanimi).any():
+                QMessageBox.warning(self, "Uyarı", "Bu malzeme önceden girilmiş.\nLütfen arama yaparak güncelleyin.")
+                return
+
+        # 4. Kayıt
+        self.df.loc[len(self.df)] = new_row
+        self.is_successful = True
+        self.accept() # Pencereyi kapatır ve result() döner
