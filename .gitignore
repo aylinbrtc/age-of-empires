@@ -1039,3 +1039,190 @@ def update_table_from_df(self, df=None, change_type=None):
             self.cell_edit_input.clear()
             self.cell_edit_input.setEnabled(False)
             self.close_info()
+
+
+
+
+from PyQt6.QtWidgets import QStyledItemDelegate, QStyle, QApplication, QToolTip
+from PyQt6.QtCore import Qt, pyqtSignal, QRect, QSize, QEvent, QPoint
+from PyQt6.QtGui import QColor, QIcon, QPainter, QBrush, QPen
+import os
+
+class ActionButtonsDelegate(QStyledItemDelegate):
+    """
+    Tablo hücresine yan yana işlem butonları (ikonlar) çizen Delegate sınıfı.
+    """
+    # Sinyal: (index, işlem_key) döndürür. Örn: (index, "delete")
+    buttonClicked = pyqtSignal(object, str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        # --- AYARLAR ---
+        self.button_size = 24   # Buton genişliği ve yüksekliği
+        self.spacing = 6        # Butonlar arası boşluk
+        self.padding = 4        # Hücre kenar boşluğu
+        
+        # --- BUTON TANIMLARI ---
+        # Format: (Key, Tooltip Text, Icon Path, Hover Color)
+        self.buttons_config = [
+            ("details", "Ayrıntılar", "assets/info-circle.svg", "#3498db"),
+            ("procedures", "Prosedür Seç", "assets/inboxes.svg", "#9b59b6"),
+            ("edit_storage", "Depo Düzenle", "assets/layer-forward.svg", "#f39c12"),
+            ("log", "Log Kaydı", "assets/receipt.svg", "#2ecc71"),
+            ("assign", "Kullanıma Al", "assets/assets.svg", "#1abc9c"),
+            ("delete", "Sil", "assets/trash.svg", "#e74c3c")
+        ]
+
+        # --- İKONLARI ÖNBELLEĞE AL (Cache) ---
+        # Her paint çağrısında diskten okumamak için sözlükte tutuyoruz.
+        self.icons = {}
+        for key, _, icon_path, _ in self.buttons_config:
+            if os.path.exists(icon_path):
+                self.icons[key] = QIcon(icon_path)
+            else:
+                self.icons[key] = None  # Dosya yoksa None ata (Harf çizeceğiz)
+
+    def paint(self, painter, option, index):
+        """Hücre içeriğini çizer."""
+        if not index.isValid():
+            return
+
+        # --- GÜVENLİK KONTROLÜ ---
+        # Eğer bu delegate yanlışlıkla "İşlemler" dışındaki bir sütuna atanırsa,
+        # veya temizleme işlemi başarısız olursa, standart metni çiz ve çık.
+        header_text = index.model().headerData(index.column(), Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
+        if header_text != "İşlemler":
+            super().paint(painter, option, index)
+            return
+        # -------------------------
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # 1. Çizim alanını hesapla
+        rect = option.rect
+        
+        # Eğer tablonun henüz boyutu oluşmamışsa (0 yükseklik), varsayılan bir değer ver
+        if rect.height() == 0:
+            rect = QRect(rect.x(), rect.y(), rect.width(), self.button_size + (self.padding * 2))
+
+        # Dikey ortalama hesabı
+        center_y = rect.top() + (rect.height() - self.button_size) // 2
+        
+        # Yatay başlangıç
+        current_x = rect.left() + self.padding
+
+        # Fare pozisyonunu al (Hover efekti için)
+        # Not: TableView'de setMouseTracking(True) olmalıdır.
+        mouse_pos = self.parent().mapFromGlobal(QApplication.primaryScreen().cursor().pos())
+        # Koordinat dönüşümü: Tablo içindeki koordinatı al
+        mapped_pos = self.parent().viewport().mapFrom(self.parent(), mouse_pos)
+        
+        is_row_hovered = rect.contains(mapped_pos)
+
+        # 2. Butonları Döngüyle Çiz
+        for key, tooltip, _, hover_color_hex in self.buttons_config:
+            target_rect = QRect(current_x, int(center_y), self.button_size, self.button_size)
+            
+            # Hover Durumu Kontrolü (Fare bu butonun üzerinde mi?)
+            is_hovered = is_row_hovered and target_rect.contains(mapped_pos)
+
+            # --- Buton Arka Planı ---
+            if is_hovered:
+                # Hover rengi (Butona özel renk)
+                painter.setBrush(QColor(hover_color_hex))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawRoundedRect(target_rect, 4, 4) # Hafif yuvarlatılmış köşe
+            else:
+                # Normal durum (Şeffaf veya çok hafif gri)
+                # painter.setBrush(QColor("#f0f0f0")) 
+                # painter.drawRoundedRect(target_rect, 4, 4)
+                pass 
+
+            # --- İkon veya Metin Çizimi ---
+            icon = self.icons.get(key)
+            
+            if icon and not icon.isNull():
+                # İkon varsa ikon çiz (Hover durumunda ikon rengi değişebilir, burada standart çiziyoruz)
+                # QIcon.Mode.Normal, QIcon.State.Off
+                icon.paint(painter, target_rect, Qt.AlignmentFlag.AlignCenter)
+            else:
+                # İkon yoksa (Dosya bulunamadıysa) harf çiz
+                painter.setPen(QColor(Qt.GlobalColor.white) if is_hovered else QColor(Qt.GlobalColor.black))
+                font = painter.font()
+                font.setBold(True)
+                font.setPixelSize(12)
+                painter.setFont(font)
+                painter.drawText(target_rect, Qt.AlignmentFlag.AlignCenter, tooltip[0]) # Baş harf
+
+            # Bir sonraki buton için x'i kaydır
+            current_x += self.button_size + self.spacing
+
+        painter.restore()
+
+    def editorEvent(self, event, model, option, index):
+        """Tıklama olaylarını yakalar."""
+        # Sadece Sol Tık Bırakma (Release) anında işlem yap
+        if event.type() == QEvent.Type.MouseButtonRelease:
+            if event.button() == Qt.MouseButton.LeftButton:
+                click_x = event.position().x()
+                rect = option.rect
+                current_x = rect.left() + self.padding
+
+                # Hangi butona denk geldiğini bul
+                for key, _, _, _ in self.buttons_config:
+                    end_x = current_x + self.button_size
+                    
+                    if current_x <= click_x <= end_x:
+                        # Sinyali gönder
+                        self.buttonClicked.emit(index, key)
+                        return True # Olayı tükettik
+                    
+                    current_x += self.button_size + self.spacing
+        
+        return False
+
+    def helpEvent(self, event, view, option, index):
+        """Mouse buton üzerinde durduğunda Tooltip gösterir."""
+        if not event or not view:
+            return False
+
+        if event.type() == QEvent.Type.ToolTip:
+            rect = option.rect
+            # Tooltip pozisyonunu hesapla
+            pos = event.pos()
+            click_x = pos.x()
+            
+            current_x = rect.left() + self.padding
+            
+            # Hangi butonun üzerinde?
+            for key, tooltip_text, _, _ in self.buttons_config:
+                end_x = current_x + self.button_size
+                
+                if current_x <= click_x <= end_x:
+                    # Tooltip göster
+                    QToolTip.showText(event.globalPos(), tooltip_text, view)
+                    return True
+                
+                current_x += self.button_size + self.spacing
+            
+            QToolTip.hideText()
+            return True
+
+        return super().helpEvent(event, view, option, index)
+
+    def sizeHint(self, option, index):
+        """Sütunun ne kadar geniş olması gerektiğini hesaplar."""
+        count = len(self.buttons_config)
+        
+        # Genişlik: (Buton Sayısı * Boyut) + (Aralıklar) + (Kenar Boşlukları)
+        width = (self.button_size * count) + \
+                (self.spacing * (count - 1)) + \
+                (self.padding * 2)
+        
+        # Yükseklik: Buton boyutu + Kenar boşlukları
+        # ÖNEMLİ: option.rect.height() kullanmıyoruz, sabit minimum değer veriyoruz.
+        height = self.button_size + (self.padding * 2)
+        
+        return QSize(width, height)
