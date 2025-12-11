@@ -7,7 +7,7 @@ out/
 .apt_generated
 .classpath
 .factorypath
-.project
+.projectll
 .settings
 .springBeans
 .sts4-cache
@@ -28,6 +28,92 @@ bin/
 ### Mac OS ###
 .DS_Store
 
+import pandas as pd
+import os
+import json
+import shutil
+
+class FileOperations:
+    
+    # ... (diğer metodlar: fast_load_and_clean, get_draft_path vb. AYNI KALACAK) ...
+
+    @staticmethod
+    def save_file(df, file_path, is_draft=False):
+        """
+        Dosyayı güvenli bir şekilde kaydeder.
+        Atomic Save kullanır: Önce geçici dosyaya yazar, sonra ismini değiştirir.
+        """
+        target_path = file_path
+        
+        # Eğer taslak olarak kaydediliyorsa, taslak yolunu al
+        if is_draft:
+            # get_draft_path fonksiyonunun bu sınıf içinde tanımlı olduğunu varsayıyoruz
+            # Eğer statik değilse FileOperations.get_draft_path olarak çağırın
+            target_path = FileOperations.get_draft_path(file_path)
+        
+        # Kaydetmeden önce arayüz için oluşturduğumuz geçici/gizli sütunları temizle
+        save_df = df.copy()
+        if "_cached_json_data" in save_df.columns:
+            save_df = save_df.drop(columns=["_cached_json_data"])
+
+        # --- DÜZELTME BURADA ---
+        # Pandas'ın anlaması için geçici dosyanın uzantısı da .xlsx olmalı!
+        # Eskisi: temp_path = target_path + ".tmp" (HATALI)
+        
+        dir_name = os.path.dirname(target_path)
+        file_name = os.path.basename(target_path)
+        # Geçici dosya adı: ~$temp_dosyaadi.xlsx
+        temp_filename = f"~$temp_{file_name}"
+        # Eğer uzantısı yoksa ekle
+        if not temp_filename.endswith(".xlsx"):
+             temp_filename += ".xlsx"
+             
+        temp_path = os.path.join(dir_name, temp_filename)
+        # -----------------------
+
+        try:
+            # 1. Geçici dosyaya kaydet (Uzantı .xlsx olduğu için Pandas hata vermez)
+            # engine='openpyxl' eklemek işi garantiye alır
+            save_df.to_excel(temp_path, index=False, engine='openpyxl')
+            
+            # 2. Eğer hedef dosya zaten varsa sil (Windows'ta rename için gereklidir)
+            if os.path.exists(target_path):
+                os.remove(target_path)
+            
+            # 3. Geçici dosyanın adını asıl dosya yap
+            os.rename(temp_path, target_path)
+            return True
+            
+        except Exception as e:
+            print(f"Kayıt hatası: {e}")
+            # Hata durumunda geçici dosyayı temizlemeye çalış
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
+            return False
+
+    # Diğer metodlarınız (get_draft_path, has_draft, delete_draft) burada aynen kalmalı...
+    @staticmethod
+    def get_draft_path(original_path):
+        directory = os.path.dirname(original_path)
+        filename = os.path.basename(original_path)
+        return os.path.join(directory, f".~{filename}_draft.xlsx")
+
+    @staticmethod
+    def has_draft(original_path):
+        draft_path = FileOperations.get_draft_path(original_path)
+        return os.path.exists(draft_path)
+
+    @staticmethod
+    def delete_draft(original_path):
+        draft_path = FileOperations.get_draft_path(original_path)
+        if os.path.exists(draft_path):
+            try:
+                os.remove(draft_path)
+            except:
+                pass
 
 def on_close(self, event):
         """
